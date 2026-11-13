@@ -1,0 +1,31 @@
+# 环境与密钥（.env 只存在于本地 / 部署平台，绝不提交）
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+**/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 编辑器 / 系统
+.DS_Store
+*.log
+
+# 本地 Agent 工具目录（DSH 项目记忆，不属于项目本身）
+.dsh-project-memory/
+
+# 前端
+node_modules/
+dist/
+*.tsbuildinfo
+frontend/.screenshots/
+.netlify/
+
+# 数据：只提交生成好的 lol.db，Data Dragon 原始 JSON 不提交
+data/*
+!data/.gitkeep
+!data/lol.db
+*.db-journal

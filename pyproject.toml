@@ -1,0 +1,13 @@
+[project]
+name = "lol-rag"
+version = "0.1.0"
+description = "LOL 英雄数据 Agent 问答项目（M0 数据地基 → M3 Agentic RAG）"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

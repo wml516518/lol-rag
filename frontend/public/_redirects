@@ -1,0 +1,2 @@
+/api/*  https://RENDER_SERVICE_URL/api/:splat  200
+/*  /index.html  200

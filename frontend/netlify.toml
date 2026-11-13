@@ -1,0 +1,29 @@
+# frontend/netlify.toml —— Netlify 站点配置（站点根目录：frontend）
+#
+# 前端代码始终请求相对路径 /api/*：
+# - 开发环境：vite.config.ts 的 server.proxy 转发到 http://127.0.0.1:8000
+# - 生产环境：下面的 redirect 把 /api/* 同源代理到 Render 后端（无 CORS 问题）
+#
+# TODO(Lead)：Render 部署完成后，把 RENDER_SERVICE_URL 替换为真实服务地址，
+# 例如 https://lol-rag-api.onrender.com（不要带结尾斜杠）。
+# 替换后重新 deploy 即可，前端构建不需要任何环境变量。
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# 契约第 6 节：/api/* → Render
+[[redirects]]
+  from = "/api/*"
+  to = "https://RENDER_SERVICE_URL/api/:splat"
+  status = 200
+  force = true
+
+# SPA fallback：其余路径全部返回 index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

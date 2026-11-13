@@ -1,0 +1,13 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.vite/
+*.local
+*.tsbuildinfo
+
+# 本地视觉自检截图，不提交
+.screenshots/
+
+# 编辑器 / 系统文件
+.DS_Store
+*.log

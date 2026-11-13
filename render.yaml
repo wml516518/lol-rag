@@ -1,0 +1,22 @@
+# LOL-RAG 后端部署声明（Render Blueprint）
+# 用法：仓库推到 GitHub 后，在 Render 里 New → Blueprint，选中本仓库即可。
+# rootDir=backend：Render 只把 backend/ 当项目根，app/ 包与 requirements.txt 都在这里。
+services:
+  - type: web
+    name: lol-rag-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.7"
+      # 在 Render 控制台填真实值（sync: false 不会让 yaml 里出现 key）
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      # 逗号分隔；默认 * 便于联调，上线后建议改成 Netlify 站点域名
+      - key: ALLOWED_ORIGINS
+        value: "*"
