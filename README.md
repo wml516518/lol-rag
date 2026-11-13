@@ -1,6 +1,7 @@
 # LOL-RAG · 英雄联盟数据 Agent
 
 [![在线 Demo](https://img.shields.io/badge/Demo-在线体验-d8b26a?style=flat-square)](https://lol-rag.netlify.app)
+[![CI](https://github.com/wml516518/lol-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/wml516518/lol-rag/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
