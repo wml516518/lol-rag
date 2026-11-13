@@ -8,7 +8,8 @@ const SUGGESTIONS = [
   '锤石的Q技能是什么？',
   '三相之力多少钱？',
   '有哪些加护甲的装备？',
-  '亚索是什么定位？'
+  '亚索是什么定位？',
+  '亚索怎么打？'
 ];
 
 const health: HealthResponse = {
@@ -20,6 +21,43 @@ const health: HealthResponse = {
 };
 
 const chatReply = '锤石的 Q 是「死亡判决」……';
+
+const searchReply = '亚索对线期先稳住补刀，等装备成型再找机会……';
+
+const searchResponse = {
+  reply: searchReply,
+  trace: [
+    {
+      tool: 'search_knowledge',
+      args: { query: '亚索怎么打' },
+      ok: true,
+      result: {
+        query: '亚索怎么打',
+        results: [
+          {
+            title: '亚索对线与团战思路',
+            kind: 'guide',
+            snippet: '对线期利用 E 技能穿梭小兵积攒护盾，注意敌方控制技能后再进场。',
+            score: 0.78
+          },
+          {
+            title: '亚索：疾风剑豪',
+            kind: 'champion',
+            snippet: '亚索是一名高机动性的近战刺客，依赖暴击与击飞配合。',
+            score: 0.61
+          },
+          {
+            title: '无尽之刃',
+            kind: 'item',
+            snippet: '提供暴击与暴击伤害，是亚索的核心输出装备之一。',
+            score: 0.44
+          }
+        ]
+      }
+    }
+  ],
+  model: 'deepseek-chat'
+};
 
 const chatResponse = {
   reply: chatReply,
@@ -70,7 +108,7 @@ afterEach(() => {
 });
 
 describe('LOL-RAG App', () => {
-  it('渲染品牌栏、数据版本徽章、空状态与四个建议问题', async () => {
+  it('渲染品牌栏、数据版本徽章、空状态与五个建议问题', async () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('LOL');
@@ -80,6 +118,8 @@ describe('LOL-RAG App', () => {
     for (const suggestion of SUGGESTIONS) {
       expect(screen.getByText(suggestion)).toBeInTheDocument();
     }
+    // 第 5 个建议问题带有 RAG 检索标识。
+    expect(screen.getByLabelText('检索增强')).toBeInTheDocument();
 
     // 健康检查成功后，徽章显示后端返回的数据版本。
     expect(await screen.findByText(/数据版本 16\.22\.1/)).toBeInTheDocument();
@@ -160,6 +200,30 @@ describe('LOL-RAG App', () => {
     expect(screen.getByText(/已找到 · 锤石（魂锁典狱长）/)).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: /清空/ })).toBeInTheDocument();
+  });
+
+  it('search_knowledge 轨迹展示检索条数、来源徽章与 snippet 摘要', async () => {
+    installFetchMock({ chat: () => jsonResponse(searchResponse) });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /亚索怎么打/ }));
+
+    expect(await screen.findByText('检索知识库')).toBeInTheDocument();
+    expect(screen.getByText(/检索到 3 条/)).toBeInTheDocument();
+    // 来源徽章区分 M2 知识库的三种来源。
+    expect(screen.getByText('示例攻略')).toBeInTheDocument();
+    expect(screen.getByText('英雄档案')).toBeInTheDocument();
+    expect(screen.getByText('装备档案')).toBeInTheDocument();
+    // 标题 + snippet 摘要（折叠时在 DOM 中，展开即可见）。
+    expect(screen.getByText('亚索对线与团战思路')).toBeInTheDocument();
+    expect(screen.getByText(/对线期利用 E 技能/)).toBeInTheDocument();
+    expect(screen.getByText('亚索：疾风剑豪')).toBeInTheDocument();
+    expect(screen.getByText('无尽之刃')).toBeInTheDocument();
+
+    const details = screen.getByText('工具调用').closest('details');
+    expect(details).not.toHaveAttribute('open');
   });
 
   it('502 时显示 AI 服务不可用的中文提示，并保留已发出的对话', async () => {

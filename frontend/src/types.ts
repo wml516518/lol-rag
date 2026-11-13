@@ -40,3 +40,20 @@ export type ChatTurn = {
   content: string;
   trace?: ToolTrace[];
 };
+
+/** M2 知识库检索结果的知识来源类型。 */
+export type KnowledgeKind = 'guide' | 'champion' | 'item' | string;
+
+/** search_knowledge 返回的单条检索结果。 */
+export type KnowledgeHit = {
+  title: string;
+  kind: KnowledgeKind;
+  snippet: string;
+  score: number;
+};
+
+/** search_knowledge 工具返回结构：{"query","results":[...]}。 */
+export type SearchKnowledgeResult = {
+  query: string;
+  results: KnowledgeHit[];
+};

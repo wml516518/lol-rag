@@ -2,3 +2,5 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
 httpx==0.28.1
+# M2 检索层（src/ingest.py）依赖 numpy：后端复用 src 工具，Render 必须安装
+numpy==2.4.6

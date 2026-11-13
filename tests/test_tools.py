@@ -245,3 +245,85 @@ def test_dispatch_bad_args_raises_chinese_error(temp_db):
 
     with pytest.raises(ValueError, match="参数不合法"):
         agent.dispatch("get_champion", {})
+
+
+# ---------------------------------------------------------------- M3 search_knowledge
+# search_knowledge 内部调用 retrieve.search；这里用 monkeypatch 替掉检索层，
+# 让本文件保持纯单元测试（真实链路由 tests/test_retrieve.py 覆盖）。
+FAKE_RESULTS = [
+    {
+        "doc_id": "guide:armor", "title": "对抗高护甲阵容思路", "kind": "guide",
+        "source": "示例攻略（非官方）", "snippet": "先做护甲穿透……", "score": 0.68,
+    }
+]
+
+
+def test_search_knowledge_return_structure(monkeypatch):
+    import retrieve
+
+    calls = []
+
+    def fake_search(query, k=4, index=None):
+        calls.append((query, k))
+        return FAKE_RESULTS
+
+    monkeypatch.setattr(retrieve, "search", fake_search)
+    result = tools.search_knowledge("  对抗高护甲怎么出装  ")
+
+    assert calls == [("对抗高护甲怎么出装", 4)]  # 查询被 strip 后传入，k=4
+    assert result == {
+        "query": "对抗高护甲怎么出装",
+        "results": [{
+            "title": "对抗高护甲阵容思路",
+            "kind": "guide",
+            "snippet": "先做护甲穿透……",
+            "score": 0.68,
+        }],
+    }
+
+
+def test_search_knowledge_no_hit_returns_empty_results(monkeypatch):
+    import retrieve
+
+    monkeypatch.setattr(retrieve, "search", lambda *args, **kwargs: [])
+    assert tools.search_knowledge("量子计算机") == {
+        "query": "量子计算机", "results": []
+    }
+
+
+def test_search_knowledge_empty_query_raises():
+    with pytest.raises(ValueError, match="不能为空"):
+        tools.search_knowledge("   ")
+
+
+def test_search_knowledge_propagates_retrieve_value_error(monkeypatch):
+    import retrieve
+
+    def boom(*args, **kwargs):
+        raise ValueError("查询内容不能为空")
+
+    monkeypatch.setattr(retrieve, "search", boom)
+    with pytest.raises(ValueError, match="不能为空"):
+        tools.search_knowledge("护甲")
+
+
+def test_search_knowledge_wraps_unexpected_error(monkeypatch):
+    import retrieve
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("索引损坏")
+
+    monkeypatch.setattr(retrieve, "search", boom)
+    with pytest.raises(ValueError, match="知识库检索失败"):
+        tools.search_knowledge("护甲")
+
+
+def test_dispatch_search_knowledge(temp_db, monkeypatch):
+    import agent
+    import retrieve
+
+    monkeypatch.setattr(retrieve, "search", lambda *args, **kwargs: FAKE_RESULTS)
+    result = agent.dispatch("search_knowledge", {"query": "对抗高护甲怎么出装"})
+    assert result["query"] == "对抗高护甲怎么出装"
+    assert result["results"][0]["title"] == "对抗高护甲阵容思路"
+

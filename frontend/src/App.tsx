@@ -19,23 +19,48 @@ import type {
   ChatMessage,
   ChatTurn,
   HealthResponse,
+  KnowledgeHit,
+  SearchKnowledgeResult,
   ToolTrace
 } from './types';
 
 const REPO_URL = 'https://github.com/wml516518/lol-rag';
 
-const SUGGESTIONS = [
-  '锤石的Q技能是什么？',
-  '三相之力多少钱？',
-  '有哪些加护甲的装备？',
-  '亚索是什么定位？'
+type Suggestion = {
+  text: string;
+  /** M2/M3 特色问题：高亮展示，提示 Agent 会去检索知识库。 */
+  featured?: boolean;
+};
+
+const SUGGESTIONS: Suggestion[] = [
+  { text: '锤石的Q技能是什么？' },
+  { text: '三相之力多少钱？' },
+  { text: '有哪些加护甲的装备？' },
+  { text: '亚索是什么定位？' },
+  { text: '亚索怎么打？', featured: true }
 ];
 
 const TOOL_LABELS: Record<string, string> = {
   get_champion: '查询英雄',
   get_item: '查询装备',
-  find_items_by_tag: '按类别查装备'
+  find_items_by_tag: '按类别查装备',
+  search_knowledge: '检索知识库'
 };
+
+/** M2 知识库来源类型 → 徽章文案。 */
+const SOURCE_KIND_LABELS: Record<string, string> = {
+  guide: '示例攻略',
+  champion: '英雄档案',
+  item: '装备档案'
+};
+
+function sourceKindLabel(kind: string): string {
+  return SOURCE_KIND_LABELS[kind] ?? '知识库';
+}
+
+function truncate(text: string, max = 120): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
 
 type HealthState = 'loading' | 'online' | 'offline';
 
@@ -68,6 +93,28 @@ function describeArgs(trace: ToolTrace): string {
     .slice(0, 48);
 }
 
+function getSearchResult(trace: ToolTrace): SearchKnowledgeResult | null {
+  if (trace.tool !== 'search_knowledge' || !trace.ok || !isRecord(trace.result)) {
+    return null;
+  }
+  const raw = trace.result;
+  if (!Array.isArray(raw.results)) return null;
+
+  const results: KnowledgeHit[] = raw.results
+    .filter((hit): hit is Record<string, unknown> => isRecord(hit))
+    .map((hit) => ({
+      title: typeof hit.title === 'string' && hit.title.trim() ? hit.title : '未命名资料',
+      kind: typeof hit.kind === 'string' ? hit.kind : 'guide',
+      snippet: typeof hit.snippet === 'string' ? hit.snippet : '',
+      score: typeof hit.score === 'number' ? hit.score : 0
+    }));
+
+  return {
+    query: typeof raw.query === 'string' ? raw.query : '',
+    results
+  };
+}
+
 function summarizeResult(trace: ToolTrace): string {
   if (!trace.ok) {
     const reason = typeof trace.error === 'string' ? trace.error.trim() : '';
@@ -82,6 +129,16 @@ function summarizeResult(trace: ToolTrace): string {
   if (trace.tool === 'get_item' && isRecord(result) && typeof result.name === 'string') {
     const gold = typeof result.gold === 'number' ? ` · ${result.gold} 金币` : '';
     return `已找到 · ${result.name}${gold}`;
+  }
+  if (trace.tool === 'search_knowledge') {
+    const search = getSearchResult(trace);
+    if (!search) return '检索完成';
+    if (search.results.length === 0) return '检索到 0 条';
+    const titles = search.results
+      .slice(0, 3)
+      .map((hit) => hit.title)
+      .join('、');
+    return `检索到 ${search.results.length} 条 · ${titles}`;
   }
   if (Array.isArray(result)) {
     return `返回 ${result.length} 条结果`;
@@ -208,20 +265,46 @@ function ToolTraceList({ trace }: { trace: ToolTrace[] }) {
         <span className="trace-hint">查看轨迹</span>
       </summary>
       <ol className="trace-list">
-        {trace.map((item, index) => (
-          <li
-            key={`${item.tool}-${index}`}
-            className={item.ok ? 'trace-item is-ok' : 'trace-item is-fail'}
-          >
-            <span className="trace-tool">{toolLabel(item.tool)}</span>
-            <code className="trace-arg">{describeArgs(item)}</code>
-            <span className="trace-arrow" aria-hidden="true">
-              →
-            </span>
-            <span className="trace-result">{summarizeResult(item)}</span>
-            <span className="trace-raw">{item.tool}</span>
-          </li>
-        ))}
+        {trace.map((item, index) => {
+          const search = getSearchResult(item);
+          return (
+            <li
+              key={`${item.tool}-${index}`}
+              className={item.ok ? 'trace-item is-ok' : 'trace-item is-fail'}
+            >
+              <div className="trace-line">
+                <span className="trace-tool">{toolLabel(item.tool)}</span>
+                <code className="trace-arg">{describeArgs(item)}</code>
+                <span className="trace-arrow" aria-hidden="true">
+                  →
+                </span>
+                <span className="trace-result">{summarizeResult(item)}</span>
+                <span className="trace-raw">{item.tool}</span>
+              </div>
+
+              {search && search.results.length > 0 && (
+                <ul className="trace-results" aria-label="知识库检索结果">
+                  {search.results.map((hit, hitIndex) => (
+                    <li className="trace-hit" key={`${hit.title}-${hitIndex}`}>
+                      <span className={`source-badge source-badge--${hit.kind}`}>
+                        {sourceKindLabel(hit.kind)}
+                      </span>
+                      <span className="trace-hit-title">{hit.title}</span>
+                      {hit.score > 0 && (
+                        <span className="trace-hit-score" title="相关度">
+                          {hit.score.toFixed(2)}
+                        </span>
+                      )}
+                      {hit.snippet && (
+                        <p className="trace-hit-snippet">{truncate(hit.snippet)}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </details>
   );
@@ -475,6 +558,14 @@ function App() {
                 <strong>DeepSeek</strong> function calling 驱动
               </span>
             </li>
+            <li>
+              <span className="cred-bullet" aria-hidden="true">
+                ◆
+              </span>
+              <span>
+                <strong>知识库检索</strong>：示例攻略 / 英雄档案 / 装备档案
+              </span>
+            </li>
           </ul>
           <p className="intro-foot">
             非官方粉丝项目 · 不使用 Riot Games 官方 LOGO 与英雄素材
@@ -510,21 +601,26 @@ function App() {
                 <p className="empty-eyebrow">LOL DATA AGENT</p>
                 <h3>从一个问题开始</h3>
                 <p className="empty-desc">
-                  查询英雄技能、装备价格或按类别找装备。回答只基于数据查询，不凭空生成。
+                  查询英雄技能、装备价格，或检索攻略与思路。回答只基于数据与知识库，不凭空生成。
                 </p>
                 <div className="chip-grid">
                   {SUGGESTIONS.map((suggestion, index) => (
                     <button
-                      key={suggestion}
+                      key={suggestion.text}
                       type="button"
-                      className="chip"
-                      onClick={() => void send(suggestion)}
+                      className={suggestion.featured ? 'chip chip--featured' : 'chip'}
+                      onClick={() => void send(suggestion.text)}
                       disabled={pending}
                     >
                       <span className="chip-index" aria-hidden="true">
                         {String(index + 1).padStart(2, '0')}
                       </span>
-                      <span>{suggestion}</span>
+                      <span className="chip-text">{suggestion.text}</span>
+                      {suggestion.featured && (
+                        <span className="chip-badge" aria-label="检索增强">
+                          RAG
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

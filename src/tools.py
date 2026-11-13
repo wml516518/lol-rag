@@ -160,3 +160,39 @@ def find_items_by_tag(tag: str) -> list[dict]:
         }
         for item in matched[:30]
     ]
+
+
+def search_knowledge(query: str) -> dict:
+    """M3：检索知识库（示例攻略 + 英雄/装备档案），返回最相关的 4 段文本。
+
+    和前面三个「精确事实」工具不同：这里回答的是攻略思路、出装推荐、对线团战、
+    阵容应对这类开放问题。检索实现在 src/retrieve.py（M2 检索层），
+    本函数只是给 Agent 提供一个受控入口（白名单工具）。
+    """
+    clean = _clean(query)
+    if not clean:
+        raise ValueError("检索内容不能为空，请用一句话描述你想了解的问题")
+
+    try:
+        # 延迟导入：只有第一次调用本工具时才加载 numpy、构建/加载索引。
+        # 这样 Agent 启动、以及只查价格的请求都不必为 M2 付启动成本。
+        import retrieve
+        results = retrieve.search(clean, k=4)
+    except ValueError:
+        raise  # 检索层的参数错误（例如空查询）原样透传中文说明
+    except Exception as e:
+        # 索引/依赖异常也翻译成中文给模型看，避免把内部堆栈泄漏到回答里
+        raise ValueError(f"知识库检索失败：{e}") from e
+
+    return {
+        "query": clean,
+        "results": [
+            {
+                "title": item["title"],
+                "kind": item["kind"],
+                "snippet": item["snippet"],
+                "score": item["score"],
+            }
+            for item in results
+        ],
+    }
