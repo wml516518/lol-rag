@@ -329,8 +329,10 @@ Netlify 的 redirect 把 `/api/*` 同源代理到 Render，前端代码里只有
 
 - **CI**：`.github/workflows/ci.yml` 在 push / PR 时执行：后端 pytest（离线假 LLM）、
   `src/` 测试（工具 + 检索，使用临时 SQLite/索引）、前端 `npm ci && npm run test && npm run build`。
-- **前端**：Netlify 当前由 CLI 手动部署；连接仓库后即可 push 到 main 自动构建发布。
-- **后端**：按 `render.yaml` 部署（`autoDeploy: true`），push 到 main 后自动重新部署。
+- **CD**：两个平台都接入了仓库的自动部署——
+  - **Render**：服务开启 `autoDeploy`，push 到 `main` 后自动重新构建后端（已验证）；
+  - **Netlify**：站点已关联 GitHub 仓库，push 到 `main` 后自动构建并发布前端
+    （若免费额度异常，平台可能跳过构建，此时可用 `netlify deploy --prod --dir frontend/dist --site lol-rag` 手动发布）。
 
 ### 环境变量
 

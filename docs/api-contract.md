@@ -166,10 +166,11 @@ search_knowledge(query: str) -> dict          # M3 新增
 - **Render**：仓库根 `render.yaml`，rootDir `backend`，健康检查 `/api/health`，
   free plan（冷启动可接受，README 写明）
 - **Netlify**：站点根目录 `frontend`，build `npm run build`，publish `dist`；redirect 代理见上
-- **CI**：GitHub Actions `.github/workflows/ci.yml`，push/PR 时跑后端测试（22）、工具测试（47）、
+- **CI**：GitHub Actions `.github/workflows/ci.yml`，push/PR 时跑后端测试（22）、工具与检索测试（47）、
   前端测试与构建
-- **CD**：push 到 `main` 后自动部署（Netlify 前端 + Render 后端）；也可用
-  `netlify deploy --prod --dir frontend/dist --site lol-rag` / `render deploys create <service-id>` 手动发布
+- **CD**：push 到 `main` 后平台原生自动部署（Render `autoDeploy` + Netlify 仓库关联）；
+  手动发布可用 `netlify deploy --prod --dir frontend/dist --site lol-rag` /
+  `render deploys create <service-id>`
 - 密钥只存在 Render 环境变量；仓库任何位置不得出现真实 key
 
 ## 8. 验收清单（Lead 会用这套命令复核）
