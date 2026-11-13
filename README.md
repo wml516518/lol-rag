@@ -240,7 +240,14 @@ Netlify 的 redirect 把 `/api/*` 同源代理到 Render，前端代码里只有
 - 站点根目录：`frontend`；构建命令 `npm run build`；发布目录 `dist`。
 - `/api/*` 由 `frontend/netlify.toml` 的 redirect 同源代理到 Render 后端，
   其余路径回退到 `index.html`（SPA）。
-- 前端构建**不需要任何环境变量**，仓库连上 GitHub 后即可自动构建。
+- 前端构建**不需要任何环境变量**。
+- 线上站点：<https://lol-rag.netlify.app>。当前通过 Netlify CLI 手动部署；如需 push 自动部署，
+  在 Netlify 站点设置里连接本仓库（Base directory `frontend`、Build command `npm run build`、
+  Publish directory `dist`）即可。
+  ```bash
+  cd frontend && npm ci && npm run build
+  netlify deploy --prod --dir dist --site lol-rag
+  ```
 - 后端地址已配置为 `https://lol-rag-api.onrender.com`（`frontend/netlify.toml` 与 `frontend/public/_redirects` 两处保持一致）。
 
 ### 后端：Render
