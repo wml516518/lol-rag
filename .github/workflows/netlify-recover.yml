@@ -1,13 +1,18 @@
 name: Netlify Recover
 
-# 目的：Netlify Free 账号的 stale credit flag 被平台清除后，无需等下一次 push，
-# 自动触发两个站点的生产构建（构建成功 = 前端 M3 / 个人主页新卡片自动上线）。
-# 使用仓库 Secret: NETLIFY_AUTH_TOKEN；Variables: NETLIFY_SITE_ID / PORTFOLIO_SITE_ID
+# 目的：Netlify Free 账号的 stale credit flag 被平台清除后，自动触发两个站点的生产构建，
+# 让 M3 前端与个人主页新卡片自动上线，而不必等下一次 push。
+#
+# 注意：Netlify 的 POST /sites/{id}/builds 在 flag 期间也会返回 200，
+# 但随后的 deploy 会立即变成 error("Skipped due to account credit usage exceeded")。
+# 因此本 workflow 会触发后轮询最新 deploy 状态，据此判断是否真的恢复。
+#
+# 需要仓库 Secrets: NETLIFY_AUTH_TOKEN；Variables: NETLIFY_SITE_ID / PORTFOLIO_SITE_ID
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 2 * * *" # 每天 10:30 Asia/Shanghai
+    - cron: "30 2 * * 1" # 每周一 10:30 Asia/Shanghai（减少 flag 期间的无意义构建邮件）
 
 permissions:
   contents: read
@@ -16,40 +21,59 @@ jobs:
   retry-builds:
     name: retry-netlify-builds
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      LOL_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+      PORTFOLIO_SITE_ID: ${{ vars.PORTFOLIO_SITE_ID }}
     steps:
-      - name: Try production build (lol-rag)
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+      - name: Retry production builds and verify outcome
         run: |
-          if [ -z "$SITE_ID" ]; then echo "NETLIFY_SITE_ID 未配置，跳过"; exit 0; fi
-          code=$(curl -s -o /tmp/build.json -w "%{http_code}" \
-            -X POST "https://api.netlify.com/api/v1/sites/${SITE_ID}/builds" \
-            -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
-            -H "Content-Type: application/json" -d '{}')
-          echo "lol-rag build http=${code}"
-          head -c 500 /tmp/build.json || true
-          if [ "$code" = "403" ]; then
-            echo "::warning::Netlify 仍在 stale credit flag 状态，构建被拒，稍后自动重试"
-            exit 0
-          fi
-          if [ "$code" -ge 300 ]; then echo "构建触发失败"; exit 1; fi
-
-      - name: Try production build (portfolio)
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          SITE_ID: ${{ vars.PORTFOLIO_SITE_ID }}
-        run: |
-          if [ -z "$SITE_ID" ]; then echo "PORTFOLIO_SITE_ID 未配置，跳过"; exit 0; fi
-          code=$(curl -s -o /tmp/build2.json -w "%{http_code}" \
-            -X POST "https://api.netlify.com/api/v1/sites/${SITE_ID}/builds" \
-            -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
-            -H "Content-Type: application/json" -d '{}')
-          echo "portfolio build http=${code}"
-          head -c 500 /tmp/build2.json || true
-          if [ "$code" = "403" ]; then
-            echo "::warning::Netlify 仍在 stale credit flag 状态，构建被拒，稍后自动重试"
-            exit 0
-          fi
-          if [ "$code" -ge 300 ]; then echo "构建触发失败"; exit 1; fi
+          set -u
+          retry_site() {
+            local label="$1" site_id="${2:-}"
+            if [ -z "$site_id" ]; then echo "$label: site id 未配置，跳过"; return 0; fi
+            echo "=== $label ($site_id) ==="
+            local before latest state err
+            before=$(curl -s "https://api.netlify.com/api/v1/sites/${site_id}/deploys?per_page=1" \
+              -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" | jq -r '.[0].id // "none"')
+            local code
+            code=$(curl -s -o /tmp/build.json -w "%{http_code}" \
+              -X POST "https://api.netlify.com/api/v1/sites/${site_id}/builds" \
+              -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+              -H "Content-Type: application/json" -d '{}')
+            echo "trigger http=${code} (previous deploy: ${before})"
+            if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+              echo "::warning::$label 触发构建返回 ${code}（可能仍在 flag 期间）"
+              return 0
+            fi
+            # 等新 deploy 出现并稳定
+            for _ in $(seq 1 12); do
+              sleep 10
+              latest=$(curl -s "https://api.netlify.com/api/v1/sites/${site_id}/deploys?per_page=1" \
+                -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" | jq -r '.[0].id // "none"')
+              [ "$latest" != "$before" ] && break
+            done
+            state=$(curl -s "https://api.netlify.com/api/v1/sites/${site_id}/deploys/${latest}" \
+              -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" | jq -r '.state')
+            err=$(curl -s "https://api.netlify.com/api/v1/sites/${site_id}/deploys/${latest}" \
+              -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" | jq -r '.error_message // ""')
+            echo "latest deploy: id=${latest} state=${state} error=${err}"
+            case "${err}" in
+              *"credit usage exceeded"*)
+                echo "::warning::$label 仍被 stale credit flag 阻断，下周自动重试"
+                return 0
+                ;;
+            esac
+            case "${state}" in
+              building|enqueued|preparing|ready)
+                echo "::notice::$label 生产构建已受理（state=${state}），前端将自动上线"
+                ;;
+              *)
+                echo "::error::$label 构建失败：state=${state} error=${err}"
+                return 1
+                ;;
+            esac
+          }
+          retry_site "lol-rag" "${LOL_SITE_ID}"
+          retry_site "portfolio" "${PORTFOLIO_SITE_ID}"
