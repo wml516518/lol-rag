@@ -59,8 +59,10 @@ function installFetchMock(options?: { chat?: () => Response | Promise<Response> 
   return mock;
 }
 
+let fetchMock: ReturnType<typeof installFetchMock>;
+
 beforeEach(() => {
-  installFetchMock();
+  fetchMock = installFetchMock();
 });
 
 afterEach(() => {
@@ -81,6 +83,61 @@ describe('LOL-RAG App', () => {
 
     // 健康检查成功后，徽章显示后端返回的数据版本。
     expect(await screen.findByText(/数据版本 16\.22\.1/)).toBeInTheDocument();
+  });
+
+  it('Enter 发送、Shift+Enter 换行', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const input = screen.getByLabelText('输入你的问题');
+    const chatCalls = () =>
+      (fetchMock.mock.calls as unknown[][]).filter(
+        ([url]) => String(url).includes('/api/chat')
+      ).length;
+
+    await user.type(input, '锤石的Q');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    expect(input).toHaveValue('锤石的Q\n');
+    expect(chatCalls()).toBe(0);
+
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText(chatReply)).toBeInTheDocument();
+    expect(chatCalls()).toBe(1);
+  });
+
+  it('发送中禁用输入并显示打字状态', async () => {
+    let resolveChat: ((value: Response) => void) | undefined;
+    const pendingChat = new Promise<Response>((resolve) => {
+      resolveChat = resolve;
+    });
+    installFetchMock({ chat: () => pendingChat });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText('输入你的问题'), '三相之力多少钱？');
+    await user.click(screen.getByRole('button', { name: /发送/ }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在查询数据…');
+    expect(screen.getByRole('button', { name: /回答中/ })).toBeDisabled();
+    expect(screen.queryByRole('heading', { name: '从一个问题开始' })).not.toBeInTheDocument();
+
+    resolveChat?.(jsonResponse(chatResponse));
+    expect(await screen.findByText(chatReply)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('健康检查失败时版本徽章显示「离线」', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('button', { name: '离线' })).toBeInTheDocument();
   });
 
   it('点击建议问题后显示用户消息、助手回复与可折叠的工具轨迹', async () => {

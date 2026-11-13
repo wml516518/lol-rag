@@ -1,2 +1,2 @@
-/api/*  https://RENDER_SERVICE_URL/api/:splat  200
+/api/*  https://lol-rag-api.onrender.com/api/:splat  200
 /*  /index.html  200

@@ -120,7 +120,7 @@ find_items_by_tag(tag: str) -> list[dict]
   ```toml
   [[redirects]]
     from = "/api/*"
-    to = "https://RENDER_SERVICE_URL/api/:splat"   # Lead 部署后替换
+    to = "https://lol-rag-api.onrender.com/api/:splat"   # 当前已部署的 Render 服务
     status = 200
     force = true
   ```

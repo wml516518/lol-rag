@@ -1,6 +1,6 @@
 # LOL-RAG · 英雄联盟数据 Agent
 
-[![在线 Demo](https://img.shields.io/badge/Demo-在线体验-d8b26a?style=flat-square)](__LIVE_DEMO__)
+[![在线 Demo](https://img.shields.io/badge/Demo-在线体验-d8b26a?style=flat-square)](https://lol-rag.netlify.app)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
@@ -17,7 +17,7 @@ small enough to read end to end.
 **中文定位** — 一个从 0 手写、可以完整读懂的 LLM Agent 落地项目：用官方数据回答英雄/装备/技能问题，
 答案必须来自工具查询而不是模型记忆；前端把每一次工具调用摊开给用户看。
 
-- 在线体验：**__LIVE_DEMO__**（部署地址）
+- 在线体验：**https://lol-rag.netlify.app**
 - 代码仓库：<https://github.com/wml516518/lol-rag>
 - 数据版本：**16.22.1** · 英雄 **173** · 装备 **254**（召唤师峡谷可购买）
 
@@ -174,7 +174,7 @@ curl -s -X POST localhost:8000/api/chat -H 'content-type: application/json' \
 
 ```bash
 cd frontend
-npm install                   # 仓库当前未提交 package-lock.json，故用 install 而非 ci
+npm ci                        # 或 npm install（CI 用 npm ci 保证可复现）
 npm run dev                   # http://localhost:5173，/api 由 Vite 代理到 127.0.0.1:8000
 ```
 
@@ -241,7 +241,7 @@ Netlify 的 redirect 把 `/api/*` 同源代理到 Render，前端代码里只有
 - `/api/*` 由 `frontend/netlify.toml` 的 redirect 同源代理到 Render 后端，
   其余路径回退到 `index.html`（SPA）。
 - 前端构建**不需要任何环境变量**，仓库连上 GitHub 后即可自动构建。
-- 部署前把 `frontend/netlify.toml` 里 `RENDER_SERVICE_URL` 换成真实后端地址（不含结尾斜杠）。
+- 后端地址已配置为 `https://lol-rag-api.onrender.com`（`frontend/netlify.toml` 与 `frontend/public/_redirects` 两处保持一致）。
 
 ### 后端：Render
 
