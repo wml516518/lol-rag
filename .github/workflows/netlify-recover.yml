@@ -1,0 +1,55 @@
+name: Netlify Recover
+
+# 目的：Netlify Free 账号的 stale credit flag 被平台清除后，无需等下一次 push，
+# 自动触发两个站点的生产构建（构建成功 = 前端 M3 / 个人主页新卡片自动上线）。
+# 使用仓库 Secret: NETLIFY_AUTH_TOKEN；Variables: NETLIFY_SITE_ID / PORTFOLIO_SITE_ID
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * *" # 每天 10:30 Asia/Shanghai
+
+permissions:
+  contents: read
+
+jobs:
+  retry-builds:
+    name: retry-netlify-builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Try production build (lol-rag)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$SITE_ID" ]; then echo "NETLIFY_SITE_ID 未配置，跳过"; exit 0; fi
+          code=$(curl -s -o /tmp/build.json -w "%{http_code}" \
+            -X POST "https://api.netlify.com/api/v1/sites/${SITE_ID}/builds" \
+            -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "lol-rag build http=${code}"
+          head -c 500 /tmp/build.json || true
+          if [ "$code" = "403" ]; then
+            echo "::warning::Netlify 仍在 stale credit flag 状态，构建被拒，稍后自动重试"
+            exit 0
+          fi
+          if [ "$code" -ge 300 ]; then echo "构建触发失败"; exit 1; fi
+
+      - name: Try production build (portfolio)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          SITE_ID: ${{ vars.PORTFOLIO_SITE_ID }}
+        run: |
+          if [ -z "$SITE_ID" ]; then echo "PORTFOLIO_SITE_ID 未配置，跳过"; exit 0; fi
+          code=$(curl -s -o /tmp/build2.json -w "%{http_code}" \
+            -X POST "https://api.netlify.com/api/v1/sites/${SITE_ID}/builds" \
+            -H "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "portfolio build http=${code}"
+          head -c 500 /tmp/build2.json || true
+          if [ "$code" = "403" ]; then
+            echo "::warning::Netlify 仍在 stale credit flag 状态，构建被拒，稍后自动重试"
+            exit 0
+          fi
+          if [ "$code" -ge 300 ]; then echo "构建触发失败"; exit 1; fi
