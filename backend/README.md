@@ -64,12 +64,24 @@ curl -s -X POST localhost:8000/api/chat -H 'content-type: application/json' \
   - system prompt 由后端追加，前端传 `role:"system"` 会 422；
   - 超过 20 条消息只保留最新 20 条；
   - `trace` 只含本轮工具调用，按调用顺序；失败项为 `{"tool","args","ok":false,"error"}`；
+  - 工具共 4 个：`get_champion` / `get_item` / `find_items_by_tag` / `search_knowledge`（M3 知识库检索），
+    由 `src/agent.py` 的 `TOOL_SPECS` + `dispatch` 白名单统一提供，后端不复制工具逻辑；
   - 工具循环最多 6 轮，随后强制模型直接回答；
   - DeepSeek 超时/异常 → 502 `{"detail":"AI 服务暂时不可用，请稍后重试"}`；
   - 同 IP 每分钟 20 次，超出 → 429 `{"detail":"请求太频繁，请稍后再试"}`（内存实现，单实例有效）。
 - 日志只记工具名、耗时、状态码；任何日志/响应都不包含 key。
 - 限流 IP 取 `X-Forwarded-For` 第一段（Render/Netlify 代理后是真实客户端 IP）；
   直连且伪造该请求头可绕过，free plan 单实例场景可接受。
+
+## 检索层（M2/M3，复用 src/）
+
+- 后端不复制检索实现：`search_knowledge` → `src/tools.py` → `src/retrieve.py` →
+  `src/ingest.py`（手写中文 bigram + TF-IDF + 哈希向量 + 余弦 top-k）。
+- 语料 = `knowledge/guides/*.md`（示例攻略，非官方） + 由 `data/lol.db` 自动生成的
+  173 篇英雄档案 / 254 篇装备档案，共约 436 篇文档、667 个切块。
+- 索引在首次检索时懒加载构建（约 0.06s），进程内缓存；可用
+  `uv run python src/ingest.py` 预先生成 `data/knowledge_index.json`（生成物，不提交）。
+- 依赖 `numpy`（`requirements.txt` 已包含），Render 构建时自动安装。
 
 ## 测试（离线，不触网、不花 token）
 
