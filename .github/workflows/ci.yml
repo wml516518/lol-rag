@@ -36,7 +36,7 @@ jobs:
         working-directory: backend
         run: python -m pytest -q
 
-      - name: Tool tests (offline, temp SQLite)
+      - name: Tool & retrieval tests (offline, temp SQLite)
         run: python -m pytest tests -q
 
       - name: Set up Node.js
@@ -59,3 +59,51 @@ jobs:
           name: frontend-dist
           path: frontend/dist
           retention-days: 7
+
+  deploy-frontend:
+    name: deploy-frontend
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download frontend build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Deploy to Netlify (prebuilt dist)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+        run: |
+          npx --yes netlify-cli@27 deploy \
+            --prod \
+            --dir=frontend/dist \
+            --site="$NETLIFY_SITE_ID" \
+            --message "GitHub Actions ${GITHUB_SHA::7}"
+
+  deploy-backend:
+    name: deploy-backend
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Render deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "RENDER_API_KEY secret 未配置，跳过 Render 触发（可依赖 Render 平台自动部署）"
+            exit 0
+          fi
+          curl -fsS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": "do_not_clear"}' \
+            -o /tmp/render_deploy.json
+          echo "Render deploy triggered:"
+          cat /tmp/render_deploy.json

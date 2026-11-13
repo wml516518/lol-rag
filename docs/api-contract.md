@@ -8,10 +8,14 @@
 
 ```
 lol-rag/
-├── src/                 # 学习主线 M0/M1：数据拉取、SQLite、工具、Agent 循环、CLI
+├── src/                 # 学习主线 M0-M3：数据拉取、SQLite、检索索引、工具、Agent 循环、CLI
+│   ├── knowledge.py     # M2：语料层（knowledge/guides + 由 lol.db 自动生成的英雄/装备档案）
+│   ├── ingest.py        # M2：手写 n-gram TF-IDF + 哈希向量，构建检索索引
+│   └── retrieve.py      # M2：余弦相似度 top-k 检索
+├── knowledge/           # M2：检索语料（guides/ 为人工示例攻略，非官方）
 ├── backend/             # FastAPI 后端（Render 部署）
 ├── frontend/            # React + Vite 前端（Netlify 部署）
-├── data/                # 由 src/fetch_data.py 生成；lol.db 提交进仓库，原始 json 不提交
+├── data/                # 生成物：lol.db 提交进仓库；knowledge_index.json 与原始 json 不提交
 ├── docs/                # 文档（本文件、部署说明）
 └── render.yaml          # Render 部署声明
 ```
@@ -32,7 +36,12 @@ lol-rag/
   - 装备刻意**过滤为「召唤师峡谷可购买」**（`maps["11"] == true` 且 `gold.purchasable == true`）：
     `item.json` 全量 863 件里有「任务：上路」「先锋之眼」等任务/娱乐模式/已下架道具，
     不过滤会让 `find_items_by_tag` 返回垃圾结果。过滤逻辑保留在代码里并注释说明取舍。
-- 数据库文件 `data/lol.db` 约 300KB，**提交进 Git**（前端/后端/评审者拿到仓库即可跑）
+- 数据库文件 `data/lol.db` 约 620KB，**提交进 Git**（前端/后端/评审者拿到仓库即可跑）
+- **M2 语料与索引**：
+  - `knowledge/guides/*.md`：人工编写的示例攻略（约 9 篇，非官方、非版本数值导向），
+    frontmatter 含 `title` / `tags` / `source`
+  - 运行时还会由 `data/lol.db` 自动生成英雄档案（173）与装备档案（254），合计约 436 篇文档、667 个切块
+  - `data/knowledge_index.json` 为运行时按语料指纹自动重建的索引（约 4MB），**不提交**
 
 ## 3. 工具函数（M1 填空 ③，`src/tools.py`）
 
@@ -53,20 +62,31 @@ get_item(name: str) -> dict
 find_items_by_tag(tag: str) -> list[dict]
 # 中文先经 TAG_CN2EN 转英文，再大小写不敏感匹配 tags；未知类别 raise ValueError
 # 返回 [{"id","name","gold","plaintext","tags"}, ...]，最多 30 件，按 gold 升序
+
+search_knowledge(query: str) -> dict          # M3 新增
+# 知识库（示例攻略 + 英雄/装备档案）cosine top-k 检索；空查询 raise ValueError，无命中返回空列表
+# 返回：
+{"query": "对抗高护甲怎么出装",
+ "results": [{"title": "...", "kind": "guide|champion|item",
+              "snippet": "...", "score": 0.61}, ...]}   # 最多 4 条，score 为 0~1 余弦
 ```
 
-## 4. Agent 层（M1 填空 ④⑤，`src/agent.py`）
+## 4. Agent 层（M1 填空 ④⑤ + M3 路由，`src/agent.py`）
 
-- `TOOL_SPECS` 保持现有三个工具（description 可优化，参数结构不变）
+- `TOOL_SPECS` 共 4 个工具：`get_champion` / `get_item` / `find_items_by_tag` / `search_knowledge`
 - `SYSTEM_PROMPT`（④）：中文 LOL 助手；**任何英雄/装备/数值/技能相关事实必须先调工具，
   禁止凭记忆编造**；不在数据内就直说“我的数据里没有”；回答精炼，可用要点列表；
   引用数据版本号；禁止输出工具调用过程本身
-- `dispatch(name, args)`（⑤）：白名单映射到 `tools` 三个函数，未知工具
+- **路由规则（M3）**：精确事实（价格/属性/技能/数值）→ 结构化工具；
+  攻略、思路、推荐、对比、开放性问题（如「亚索怎么打」「对抗高护甲怎么出装」）→ `search_knowledge`；
+  需要事实+思路时组合调用；检索内容注明来源类型（Data Dragon 官方数据 vs 示例攻略非官方）；
+  不编造检索结果里没有的内容
+- `dispatch(name, args)`（⑤）：白名单映射到 `tools` 四个函数，未知工具
   `raise ValueError(f"未知工具 {name}")`；不要用 `eval`/`getattr` 动态执行
 
 ## 5. 后端 API（Render，`backend/`）
 
-技术：FastAPI + uvicorn + httpx。Python 3.13。启动命令见 `render.yaml`。
+技术：FastAPI + uvicorn + httpx + numpy（M2 检索索引需要）。Python 3.13。启动命令见 `render.yaml`。
 
 ### GET `/api/health`
 ```json
@@ -86,11 +106,15 @@ find_items_by_tag(tag: str) -> list[dict]
 ```json
 {"reply": "锤石的Q是「死亡判决」……",
  "trace": [{"tool": "get_champion", "args": {"name": "锤石"},
-            "ok": true, "result": {"id": "Thresh", "name": "锤石", "spells": []}}],
+            "ok": true, "result": {"id": "Thresh", "name": "锤石", "spells": []}},
+           {"tool": "search_knowledge", "args": {"query": "对抗高护甲怎么出装"},
+            "ok": true, "result": {"query": "...", "results": [{"title": "...", "kind": "guide", "snippet": "...", "score": 0.61}]}}],
  "model": "deepseek-chat"}
 ```
-- `trace` 只保留本轮工具调用，顺序即调用顺序；失败调用为
+- `trace` 只保留本轮工具调用，顺序即调用顺序；工具名枚举为
+  `get_champion` / `get_item` / `find_items_by_tag` / `search_knowledge`；失败调用为
   `{"tool": "...", "args": {...}, "ok": false, "error": "未找到英雄 xxx"}`；不返回内部堆栈
+- `search_knowledge` 的 `result.results` 最多 4 条，`kind` ∈ `guide|champion|item`
 - 工具循环最多 6 轮，上游超时 60s；DeepSeek 异常 → 502
   `{"detail": "AI 服务暂时不可用，请稍后重试"}`
 - 限流：同 IP 每分钟 20 次，超出 → 429 `{"detail": "请求太频繁，请稍后再试"}`（内存实现即可）
@@ -130,19 +154,22 @@ find_items_by_tag(tag: str) -> list[dict]
   - 主体：对话区（用户/助手气泡）、助手消息下方展示可折叠的「工具调用」轨迹
     （工具中文名 + 参数 + 关键结果，例如「查询英雄 · 锤石 → 已找到」）
   - 输入：多行输入框 + 发送按钮，Enter 发送 / Shift+Enter 换行，请求中禁用并显示打字状态
-  - 空状态：4 个建议问题快捷 chips，例如「锤石的Q技能是什么？」「三相之力多少钱？」
-    「有哪些加护甲的装备？」「亚索是什么定位？」
+  - 空状态：5 个建议问题快捷 chips，例如「锤石的Q技能是什么？」「三相之力多少钱？」
+    「有哪些加护甲的装备？」「亚索怎么打？」「新手辅助怎么选？」（其中后两个走 M3 检索）
   - 错误：网络错误/429/502 用中文提示，不刷屏、不清空已有多轮对话
   - 移动端适配；深色主题（LOL 风格：深蓝黑 + 金色点缀），不使用官方 LOGO 素材
   - 页脚：数据来源 Data Dragon、代码仓库链接（Lead 部署后补）
 - `npm run build` 必须零错误；`npm run test` 至少 1 个冒烟测试（渲染 + 发送流程 mock fetch）
 
-## 7. 部署
+## 7. 部署与 CI/CD
 
 - **Render**：仓库根 `render.yaml`，rootDir `backend`，健康检查 `/api/health`，
   free plan（冷启动可接受，README 写明）
-- **Netlify**：站点根目录 `frontend`（CLI 部署时 `--dir frontend/dist`），
-  build `npm run build`，publish `dist`；redirect 代理见上
+- **Netlify**：站点根目录 `frontend`，build `npm run build`，publish `dist`；redirect 代理见上
+- **CI**：GitHub Actions `.github/workflows/ci.yml`，push/PR 时跑后端测试（22）、工具测试（47）、
+  前端测试与构建
+- **CD**：push 到 `main` 后自动部署（Netlify 前端 + Render 后端）；也可用
+  `netlify deploy --prod --dir frontend/dist --site lol-rag` / `render deploys create <service-id>` 手动发布
 - 密钥只存在 Render 环境变量；仓库任何位置不得出现真实 key
 
 ## 8. 验收清单（Lead 会用这套命令复核）
