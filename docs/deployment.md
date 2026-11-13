@@ -61,7 +61,18 @@ render deploys create srv-dbr64puc6qcc73cuhq5g --confirm
 - **CD（平台原生自动部署）**：
   - Render：服务 `autoDeploy=yes`，push 到 `main` 自动重新构建后端
   - Netlify：站点已关联 GitHub 仓库，push 到 `main` 自动构建发布前端
-- **发布后自检**：
+- **发布后自检**：优先用脚本，一条命令覆盖前端、代理、后端与 Agent 路由：
+
+```bash
+FRONTEND_URL=https://lol-rag.netlify.app \
+API_URL=https://lol-rag-api.onrender.com \
+  uv run python scripts/smoke_test.py
+# → 6/6 项通过（前端首页/标题、代理与直连 health、两条真实问答的工具路由）
+```
+
+  `.github/workflows/smoke.yml` 每天 09:00（Asia/Shanghai）+ 手动触发一次线上冒烟。
+
+- 也可以手动 curl：
 
 ```bash
 curl -s https://lol-rag-api.onrender.com/api/health
@@ -77,12 +88,13 @@ curl -s -X POST https://lol-rag.netlify.app/api/chat \
 
 ### 5.1 Netlify：`Account credit usage exceeded - new deploys are blocked`
 
-Free plan 的已知 stale credit flag：账号 API 显示 `plan_credits=300`、
-`usages_exceeded=[]`，但所有生产部署被拒，Deploy Preview 却能正常构建。
+Free plan 的已知 stale credit flag：账号 API 显示
+`capabilities.credits = {included: 300, used: 0}`、`usages_exceeded=[]`、
+`sites_with_usage_exceeded=[]`，但所有生产部署被拒，Deploy Preview 却能正常构建。
 
 处理方式：
-1. 到 <https://answers.netlify.com/c/netlify-support/48> 发帖，附账号 slug、站点 id 与报错原文，
-   请官方清除 stale flag（免费）；
+1. 提交官方支持工单：<https://www.netlify.com/support/>（Netlify 现在统一走工单，
+   论坛帖子也会被转成 ticket），附账号 slug、站点 id、报错原文与上面 `credits used: 0` 的证据；
 2. 或升级付费计划（即时生效）；
 3. 期间可用 Deploy Preview 验证前端构建是否正常，或本地 `npm run dev` 预览。
 
