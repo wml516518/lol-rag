@@ -333,6 +333,15 @@ Netlify 的 redirect 把 `/api/*` 同源代理到 Render，前端代码里只有
   - **Render**：服务开启 `autoDeploy`，push 到 `main` 后自动重新构建后端（已验证）；
   - **Netlify**：站点已关联 GitHub 仓库，push 到 `main` 后自动构建并发布前端
     （若免费额度异常，平台可能跳过构建，此时可用 `netlify deploy --prod --dir frontend/dist --site lol-rag` 手动发布）。
+- **上线冒烟**：`scripts/smoke_test.py` 检查前端首页、同源代理、后端健康检查和两条真实问答
+  （精确事实 → 结构化工具；攻略问题 → `search_knowledge`），可本地或 CI 运行：
+
+  ```bash
+  FRONTEND_URL=https://lol-rag.netlify.app API_URL=https://lol-rag-api.onrender.com \
+    uv run python scripts/smoke_test.py
+  ```
+
+  `.github/workflows/smoke.yml` 每天定时 + 手动触发一次线上冒烟。
 
 ### 环境变量
 
