@@ -246,9 +246,10 @@ function VersionBadge({
     <span
       className="version-badge is-online"
       title={`${health.champions} 位英雄 · ${health.items} 件装备`}
+      aria-label={`数据版本 ${health.data_version}`}
     >
       <span className="status-dot" aria-hidden="true" />
-      数据版本 {health.data_version}
+      <span className="version-label">数据版本 </span>{health.data_version}
     </span>
   );
 }
@@ -487,6 +488,7 @@ function App() {
           </div>
 
           <div className="header-meta">
+            <a className="header-repo header-back" href="/#projects" title="返回个人主页">返回个人主页</a>
             <VersionBadge state={healthState} health={health} onRetry={() => void refreshHealth()} />
             <a
               className="header-repo"

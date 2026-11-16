@@ -122,7 +122,7 @@ describe('LOL-RAG App', () => {
     expect(screen.getByLabelText('检索增强')).toBeInTheDocument();
 
     // 健康检查成功后，徽章显示后端返回的数据版本。
-    expect(await screen.findByText(/数据版本 16\.22\.1/)).toBeInTheDocument();
+    expect(await screen.findByLabelText('数据版本 16.22.1')).toBeInTheDocument();
   });
 
   it('Enter 发送、Shift+Enter 换行', async () => {
@@ -183,7 +183,7 @@ describe('LOL-RAG App', () => {
   it('点击建议问题后显示用户消息、助手回复与可折叠的工具轨迹', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText(/数据版本 16\.22\.1/);
+    await screen.findByLabelText('数据版本 16.22.1');
 
     await user.click(screen.getByRole('button', { name: /锤石的Q技能是什么/ }));
 

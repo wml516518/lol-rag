@@ -1,4 +1,7 @@
-# LOL-RAG 后端（FastAPI，Render 部署）
+# LOL-RAG 后端（FastAPI，自托管部署）
+
+> 新部署由 Nginx 将 `/apps/lol-rag/api/*` 转发到 FastAPI 的 `/api/*`。下文 Render
+> 配置仅作为旧平台迁移参考；接口字段没有变化。
 
 接口契约见仓库根 [docs/api-contract.md](../docs/api-contract.md)（冻结版，字段名以它为准）。
 后端不复制 prompt / 工具逻辑：`app/db_bridge.py` 把 `<repo>/src` 加入 `sys.path`，
@@ -49,11 +52,11 @@ curl -s -X POST localhost:8000/api/chat -H 'content-type: application/json' \
 
 | 变量 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `DEEPSEEK_API_KEY` | 是 | — | 只配在 Render 控制台 / 本地仓库根 `.env` |
+| `DEEPSEEK_API_KEY` | 是 | — | 只配在 FastAPI 服务环境 / 本地仓库根 `.env` |
 | `ALLOWED_ORIGINS` | 否 | `*` | 逗号分隔的 CORS 来源；不启用 credentials |
 | `LOL_DB_PATH` | 否 | `<repo>/data/lol.db` | 相对路径以仓库根为基准 |
 | `DEEPSEEK_MODEL` | 否 | 复用 `src/agent.py` 的 `MODEL`（`deepseek-chat`） | |
-| `PORT` | 否 | `8000` | `run.py` 使用；Render 自动注入 |
+| `PORT` | 否 | `8000` | `run.py` 使用；托管平台可注入 |
 
 ## 接口行为
 
@@ -70,7 +73,7 @@ curl -s -X POST localhost:8000/api/chat -H 'content-type: application/json' \
   - DeepSeek 超时/异常 → 502 `{"detail":"AI 服务暂时不可用，请稍后重试"}`；
   - 同 IP 每分钟 20 次，超出 → 429 `{"detail":"请求太频繁，请稍后再试"}`（内存实现，单实例有效）。
 - 日志只记工具名、耗时、状态码；任何日志/响应都不包含 key。
-- 限流 IP 取 `X-Forwarded-For` 第一段（Render/Netlify 代理后是真实客户端 IP）；
+- 限流 IP 取 `X-Forwarded-For` 第一段（Nginx 或托管平台代理后是真实客户端 IP）；
   直连且伪造该请求头可绕过，free plan 单实例场景可接受。
 
 ## 检索层（M2/M3，复用 src/）
@@ -81,7 +84,7 @@ curl -s -X POST localhost:8000/api/chat -H 'content-type: application/json' \
   173 篇英雄档案 / 254 篇装备档案，共约 436 篇文档、667 个切块。
 - 索引在首次检索时懒加载构建（约 0.06s），进程内缓存；可用
   `uv run python src/ingest.py` 预先生成 `data/knowledge_index.json`（生成物，不提交）。
-- 依赖 `numpy`（`requirements.txt` 已包含），Render 构建时自动安装。
+- 依赖 `numpy`（`requirements.txt` 已包含），部署时安装。
 
 ## 测试（离线，不触网、不花 token）
 
@@ -94,13 +97,23 @@ NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1 \
 覆盖：health 字段、成功 trace 协议、工具失败 trace、6 轮上限、参数校验 422、
 20 条截断、限流 429、上游 502/500 不泄漏。
 
-## Render 部署
+## 自托管部署
+
+在 `backend/` 准备虚拟环境并启动：
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8002
+```
+
+个人主页仓库的 `deploy/nginx/routes.conf` 会把 `/apps/lol-rag/api/*` 同源转发到该服务。
+正式端口、进程用户和 `.env` 路径按服务器实际配置。静态前端无需 Node 常驻进程。
+
+## 旧 Render 配置
 
 根目录 [`render.yaml`](../render.yaml) 已声明：`rootDir: backend`、free plan、
 健康检查 `/api/health`、`pip install -r requirements.txt`、
 `uvicorn app.main:app --host 0.0.0.0 --port $PORT`。
-在 Render 控制台填入 `DEEPSEEK_API_KEY`（不要把 key 写进 yaml），
-部署后把 Netlify 的 `/api/*` redirect 指向该服务地址。
+该文件只保留为迁移期间的回退参考，不是新域名部署路径。
 
 ## 排障
 
@@ -109,5 +122,5 @@ NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1 \
 | `Invalid port: ':1]'` | 本机 `NO_PROXY` 含 `[::1]`，命令前加 `NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1` |
 | 启动报「未找到数据库」 | 先在仓库根跑 `uv run python src/fetch_data.py`，或用 `LOL_DB_PATH` 指向 db |
 | `/api/chat` 恒 502 | 检查 `DEEPSEEK_API_KEY` 是否配置、余额/网络是否正常（日志有状态码） |
-| 首次访问慢 | Render free plan 会冷启动，稍等几秒重试即可 |
+| 首次访问慢 | 自托管冷启动或模型排队时会慢，检查服务日志和上游状态 |
 | 前端跨域失败 | `ALLOWED_ORIGINS` 改成前端域名（逗号分隔），保存后重启服务 |

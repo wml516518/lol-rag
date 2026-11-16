@@ -51,4 +51,10 @@ jobs:
         run: |
           npm ci
           npm run test
-          npm run build
+          npm run build:self-host
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-lol-rag
+          path: frontend/dist/
+          retention-days: 7

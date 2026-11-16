@@ -5,7 +5,7 @@ export const CHAT_TIMEOUT_MS = 70_000;
 /** 健康检查只用于顶部徽章，失败要尽快显示「离线」，不需要等太久。 */
 export const HEALTH_TIMEOUT_MS = 8_000;
 
-/** 所有请求都走相对路径：开发环境由 vite proxy 转发，生产由 netlify.toml redirect 代理。 */
+/** 所有请求都基于 BASE_URL：开发环境由 Vite proxy 转发，生产由 Nginx 处理应用子路径。 */
 async function requestJson<T>(
   path: string,
   init: RequestInit,
@@ -17,7 +17,7 @@ async function requestJson<T>(
   try {
     let response: Response;
     try {
-      response = await fetch(path, { ...init, signal: controller.signal });
+      response = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, '')}${path}`, { ...init, signal: controller.signal });
     } catch {
       if (controller.signal.aborted) {
         throw new Error(

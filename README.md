@@ -1,6 +1,8 @@
 # LOL-RAG · 英雄联盟数据 Agent
 
-[![在线 Demo](https://img.shields.io/badge/Demo-在线体验-d8b26a?style=flat-square)](https://lol-rag.netlify.app)
+同域名自托管版本已上线：<https://wml.ailoong.net.cn/apps/lol-rag/>。构建命令为 `cd frontend && npm run build:self-host`，部署细节见[子路径部署手册](docs/deployment/subpath.md)。
+
+[![部署目标](https://img.shields.io/badge/Deploy-同域名子路径-d8b26a?style=flat-square)](docs/deployment/subpath.md)
 [![CI](https://github.com/wml516518/lol-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/wml516518/lol-rag/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -13,14 +15,16 @@ Data Dragon dataset into SQLite (173 champions, 254 purchasable Summoner's Rift 
 16.22.1), adds a hand-written retrieval layer (9 sample guides + 436 auto-generated archive
 documents → 667 chunks, TF-IDF hashing into 512 dims, cosine top-k), exposes four whitelisted
 function-calling tools, and lets the model route between structured lookups and guide retrieval.
-React chat UI on Netlify, FastAPI backend on Render. No LangChain, no ORM, no external embedding
-service — the whole loop is small enough to read end to end.
+The React chat UI now targets an independent static release under `/apps/lol-rag/`; Nginx serves
+that build and proxies the app API to FastAPI. The old Netlify/Render setup remains only as a
+migration reference. No LangChain, no ORM, no external embedding service — the whole loop is small
+enough to read end to end.
 
 **中文定位** — 一个从 0 手写、可以完整读懂的 LLM Agent 落地项目：用官方数据 + 示例攻略语料回答
 「英雄/装备/技能」和「怎么出装/怎么打/怎么站位」两类问题，答案必须来自工具查询或知识库检索，
 而不是模型记忆；前端把每一次工具调用摊开给用户看。
 
-- 在线体验：**https://lol-rag.netlify.app**
+- 线上入口：**<https://wml.ailoong.net.cn/apps/lol-rag/>**（由个人主页域名统一提供）
 - 代码仓库：<https://github.com/wml516518/lol-rag>
 - 数据版本：**16.22.1** · 英雄 **173** · 装备 **254**（召唤师峡谷可购买）
 - 知识库：**436 篇文档 / 667 个切块**（9 篇示例攻略 + 173 英雄档案 + 254 装备档案）
@@ -56,8 +60,8 @@ LOL-RAG 用两套工具覆盖这两类问题，并让模型自己路由：
 - **工具调用轨迹可视化**：前端每条助手回复下方都有可折叠的「工具调用」面板（工具中文名 + 参数 + 结果摘要），
   Agent 是不是真的查了数据，用户一眼能看见。
 - **数据干净优先**：863 件原始装备里只入库 254 件召唤师峡谷可购买装备，过滤掉任务道具、娱乐模式道具和下架装备。
-- **前后端分离部署**：React 静态站点在 Netlify，FastAPI 在 Render，前端只请求相对路径 `/api/*`，
-  由 Netlify 同源代理到后端（无 CORS 配置负担，key 也不会出现在浏览器里）。
+- **前后端分离部署**：React 静态站作为独立版本发布到 `/apps/lol-rag/`，FastAPI 独立运行；
+  前端只请求应用子路径下的 `/apps/lol-rag/api/*`，由 Nginx 同源转发（无 CORS 配置负担，key 也不会出现在浏览器里）。
 - **开箱即用**：`data/lol.db` 与 `knowledge/` 语料直接提交进仓库，clone 下来不用联网拉数据就能跑。
 
 ## 架构
@@ -65,9 +69,9 @@ LOL-RAG 用两套工具覆盖这两类问题，并让模型自己路由：
 ```mermaid
 flowchart LR
     B[浏览器] --> R["React 前端<br/>Vite + TypeScript"]
-    R -->|"相对路径 /api/*"| N["Netlify<br/>redirect 同源代理"]
+    R -->|"/apps/lol-rag/*"| N["Nginx<br/>静态站 + API 同源代理"]
     R -.->|"本地开发 Vite proxy"| A
-    N --> A["FastAPI 后端<br/>Render"]
+    N --> A["FastAPI 后端<br/>自托管服务"]
     A <-->|"4 个工具 Schema + 系统提示词<br/>问题类型 → 工具路由（M3）"| D["DeepSeek API<br/>deepseek-chat"]
     A -->|"白名单 dispatch"| T["src/tools.py"]
     T --> S[("SQLite<br/>data/lol.db")]
@@ -91,7 +95,7 @@ flowchart LR
 | **M1 Agent 问答** | ✅ 完成 | 3 个查询工具 + 系统提示词（强制查工具、禁止编造）+ 白名单 `dispatch` + 带 tool call 回填的对话循环 + 命令行问答 |
 | **M2 检索层** | ✅ 完成 | 手写「中文 bigram + 英文词 → TF-IDF → 哈希向量（512 维）→ 余弦 top-k」；语料 = 9 篇示例攻略 + 173 英雄档案 + 254 装备档案 = **436 文档 / 667 chunk**、词表 25939；哈希粗排 + 精确稀疏精排 |
 | **M3 Agentic 融合** | ✅ 完成 | 新增 `search_knowledge` 工具（工具数 3→4）+ 路由系统提示词 + 白名单 `dispatch`；Agent 自主在结构化查询与知识检索之间选择，支持组合查询（事实 + 思路） |
-| **M4 前端 + 部署** | ✅ 完成 | React 聊天页（深色主题、工具轨迹、建议问题、移动端适配）+ FastAPI 后端；Netlify 前端、Render 后端 |
+| **M4 前端 + 部署** | ✅ 完成 | React 聊天页（深色主题、工具轨迹、建议问题、移动端适配）+ FastAPI 后端；支持 `/apps/lol-rag/` 子路径构建与独立发布 |
 
 ## 技术栈
 
@@ -102,7 +106,7 @@ flowchart LR
 | Agent | DeepSeek `deepseek-chat`、手写 function calling 循环、4 工具白名单、问题类型路由 |
 | 后端 | Python 3.13 / FastAPI / uvicorn / httpx / Pydantic |
 | 前端 | React 18 / TypeScript / Vite / 纯 CSS（不引 UI 框架） |
-| 工程 | uv（依赖与虚拟环境）、pytest / vitest、GitHub Actions、Netlify + Render |
+| 工程 | uv（依赖与虚拟环境）、pytest / vitest、GitHub Actions、Nginx + 自托管发布 |
 
 ## 目录结构
 
@@ -120,24 +124,24 @@ lol-rag/
 ├── knowledge/                # M2 示例攻略语料（人工编写、非官方）
 │   ├── README.md             # 语料说明与新增文档规范
 │   └── guides/               # 9 篇示例攻略（*.md，带 frontmatter）
-├── backend/                  # FastAPI 后端（Render 部署，rootDir=backend）
+├── backend/                  # FastAPI 后端（可独立运行或由 Nginx 反代）
 │   ├── app/main.py           # /api/health、/api/chat、限流、CORS、启动自检
 │   ├── app/chat.py           # 带 trace 的 function calling 循环（最多 6 轮工具）
 │   ├── app/db_bridge.py      # 复用 src/ 的 prompt 与工具，读 data/lol.db
 │   ├── app/settings.py       # 环境变量 + 本地 .env
 │   ├── app/schemas.py        # 请求校验：role 仅 user/assistant、content 1..2000、最多 20 条
 │   └── tests/                # 离线测试（假 LLM，不触网、不花 token）
-├── frontend/                 # React + Vite 前端（Netlify 部署）
+├── frontend/                 # React + Vite 前端（构建到 /apps/lol-rag/）
 │   ├── src/App.tsx           # 对话页：气泡、可折叠工具轨迹、建议问题、错误提示
 │   ├── src/api.ts            # /api 相对路径请求、超时与 429/502 中文错误映射
 │   ├── src/Markdown.tsx      # 回答渲染
-│   └── netlify.toml          # /api/* 同源代理到 Render + SPA fallback
+│   └── netlify.toml          # 仅保留旧 Netlify 部署兼容
 ├── data/lol.db               # 已提交：英雄/装备/版本，开箱即用
 ├── data/knowledge_index.json # M2 索引生成物（不提交，运行时按指纹重建）
 ├── docs/api-contract.md      # 前后端契约（冻结，字段名以此为准）
 ├── tests/test_tools.py       # 工具单测
 ├── tests/test_retrieve.py    # 检索层单测（分词/切块/索引/检索）
-├── render.yaml               # Render 部署声明
+├── render.yaml               # 仅保留旧 Render 部署声明
 ├── pyproject.toml / uv.lock  # Python 依赖锁定（含 numpy）
 └── README.md
 ```
@@ -271,8 +275,8 @@ cd frontend && npm run test
 代码里写明了取舍。**数据干净比数据多重要。**
 
 **为什么 API key 只放在后端？**
-前端是纯静态站点，任何写进前端代码的 key 都等于公开。所以：key 只存在于 Render 环境变量
-（本地放仓库根 `.env`，已 gitignore），浏览器只请求自己域名下的 `/api/*`，由 Netlify 代理到后端。
+前端是纯静态站点，任何写进前端代码的 key 都等于公开。所以：key 只存在于 FastAPI 进程的环境变量
+（本地放仓库根 `.env`，已 gitignore），浏览器只请求自己域名下的 `/apps/lol-rag/api/*`，由 Nginx 转发到后端。
 后端还会自己追加 system prompt，不信任前端传入的 system 消息，避免被诱导绕过「必须查工具」的规则。
 
 **为什么手写工具循环，不用 LangChain / LlamaIndex？**
@@ -295,62 +299,55 @@ cd frontend && npm run test
 下一步是把向量化函数换成真实 embedding / 本地小模型，再评估 query 改写与「向量 + 关键词」混合检索。
 
 **为什么部署要前端代理而不是让浏览器直连后端？**
-Netlify 的 redirect 把 `/api/*` 同源代理到 Render，前端代码里只有相对路径：
+Nginx 把 `/apps/lol-rag/api/*` 同源转发到 FastAPI，前端代码只依赖 Vite `BASE_URL`：
 开发、生产行为一致，没有 CORS 配置负担，也不把后端域名散落在代码里。
-代价是 `netlify.toml` 里需要配置后端地址（部署说明见下）。
+代价是服务器需要维护一条反向代理规则（部署说明见下）。
 
 ## 部署
 
-### 前端：Netlify
+### 前端：同域名子路径
 
-- 站点根目录：`frontend`；构建命令 `npm run build`；发布目录 `dist`。
-- `/api/*` 由 `frontend/netlify.toml` 的 redirect 同源代理到 Render 后端，
-  其余路径回退到 `index.html`（SPA）。
-- 前端构建**不需要任何环境变量**。
-- 线上站点：<https://lol-rag.netlify.app>。当前通过 Netlify CLI 手动部署；如需 push 自动部署，
-  在 Netlify 站点设置里连接本仓库（Base directory `frontend`、Build command `npm run build`、
-  Publish directory `dist`）即可。
-  ```bash
-  cd frontend && npm ci && npm run build
-  netlify deploy --prod --dir dist --site lol-rag
-  ```
-- 后端地址已配置为 `https://lol-rag-api.onrender.com`（`frontend/netlify.toml` 与 `frontend/public/_redirects` 两处保持一致）。
+- 在 `frontend/` 执行 `npm ci && npm test && npm run build:self-host`，产物在 `frontend/dist/`。
+- `build:self-host` 使用 `--base=/apps/lol-rag/`，React 页面与 API 请求都落在应用子路径下。
+- 构建**不需要任何环境变量**。旧的 `npm run build` 仍生成根路径版本，仅用于迁移兼容。
+- 服务器默认发布到 `/srv/portfolio/lol-rag/current/`，每次发布使用独立版本目录并原子切换 `current`。
+- Nginx 路由维护在个人主页仓库的 `deploy/nginx/routes.conf`；不要为本应用另建公开域名。
 
-### 后端：Render
+### 后端：FastAPI
 
-- 使用仓库根 `render.yaml`（Blueprint）：`rootDir: backend`、`plan: free`、
-  `buildCommand: pip install -r requirements.txt`、
-  `startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT`、健康检查 `/api/health`。
-- Render free plan 会休眠，**首次访问需要等几秒冷启动**，之后正常；Demo 页面的首条回复稍慢属正常现象。
-- 仓库根 `data/lol.db`、`knowledge/` 随代码提交，检索索引在进程启动/首次检索时按指纹重建，
-  不需要额外挂载磁盘。
+- 在 `backend/` 安装 `requirements.txt`，通过 systemd 或现有进程管理启动：
+  `uvicorn app.main:app --host 127.0.0.1 --port 8002`。
+- Nginx 将 `/apps/lol-rag/api/*` 转发到 `127.0.0.1:8002/api/*`；健康检查为 `/apps/lol-rag/api/health`。
+- 仓库根 `data/lol.db`、`knowledge/` 随代码提交，检索索引在进程启动/首次检索时按指纹重建。
+- 正式端口、虚拟环境、进程用户和 `.env` 路径按服务器现状配置，密钥不得进入仓库或前端构建。
 
 ### CI / CD
 
 - **CI**：`.github/workflows/ci.yml` 在 push / PR 时执行：后端 pytest（离线假 LLM）、
-  `src/` 测试（工具 + 检索，使用临时 SQLite/索引）、前端 `npm ci && npm run test && npm run build`。
-- **CD**：两个平台都接入了仓库的自动部署——
-  - **Render**：服务开启 `autoDeploy`，push 到 `main` 后自动重新构建后端（已验证）；
-  - **Netlify**：站点已关联 GitHub 仓库，push 到 `main` 后自动构建并发布前端
-    （若免费额度异常，平台可能跳过构建，此时可用 `netlify deploy --prod --dir frontend/dist --site lol-rag` 手动发布）。
-- **上线冒烟**：`scripts/smoke_test.py` 检查前端首页、同源代理、后端健康检查和两条真实问答
-  （精确事实 → 结构化工具；攻略问题 → `search_knowledge`），可本地或 CI 运行：
+  `src/` 测试（工具 + 检索，使用临时 SQLite/索引）、前端 `npm ci && npm run test && npm run build:self-host`，
+  并上传 `static-lol-rag` 产物。
+- **CD**：只有变量 `SELF_HOST_DEPLOY_ENABLED=true` 后，成功的 `main` push CI 才触发
+  `.github/workflows/deploy-self-host.yml`。发布前会核对 main SHA、CI 来源和产物，再只更新
+  `/srv/portfolio/lol-rag/`，不会触碰主页或历史星河。
+- **上线冒烟**：切换后检查 `/apps/lol-rag/`、`/apps/lol-rag/api/health` 和一条真实问答
+  （精确事实 → 结构化工具；攻略问题 → `search_knowledge`）。当前脚本示例仍使用旧平台地址，
+  切换到正式域名时应把 `FRONTEND_URL` 和 `API_URL` 替换成新入口：
 
   ```bash
-  FRONTEND_URL=https://lol-rag.netlify.app API_URL=https://lol-rag-api.onrender.com \
+  FRONTEND_URL=https://example.com/apps/lol-rag API_URL=https://example.com/apps/lol-rag \
     uv run python scripts/smoke_test.py
   ```
 
-  `.github/workflows/smoke.yml` 每天定时 + 手动触发一次线上冒烟。
+  正式切换完成后应停用仅针对旧 Netlify 地址的定时 Smoke workflow，避免继续消耗旧平台额度。
 
 ### 环境变量
 
 | 变量 | 配置位置 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `DEEPSEEK_API_KEY` | **只在 Render 控制台** | 是 | 不写进 yaml、不提交仓库；`render.yaml` 里 `sync: false` |
-| `ALLOWED_ORIGINS` | Render | 否 | 逗号分隔的 CORS 来源，默认 `*`；上线后建议改成 Netlify 域名 |
-| `LOL_DB_PATH` | Render | 否 | 数据库路径，默认 `<repo>/data/lol.db`，相对路径以仓库根为基准 |
-| `DEEPSEEK_MODEL` | Render | 否 | 默认复用 `src/agent.py` 里的 `deepseek-chat` |
+| `DEEPSEEK_API_KEY` | **只在 FastAPI 服务环境** | 是 | 不提交仓库；建议放在服务器受限权限的 `.env` 或进程环境 |
+| `ALLOWED_ORIGINS` | FastAPI 服务 | 否 | 逗号分隔的 CORS 来源，默认 `*`；同源代理部署后可按需收紧 |
+| `LOL_DB_PATH` | FastAPI 服务 | 否 | 数据库路径，默认 `<repo>/data/lol.db`，相对路径以仓库根为基准 |
+| `DEEPSEEK_MODEL` | FastAPI 服务 | 否 | 默认复用 `src/agent.py` 里的 `deepseek-chat` |
 
 本地开发同理：仓库根 `.env` 只用来放 `DEEPSEEK_API_KEY`，`.env` 已在 `.gitignore` 里。
 检索层不需要任何额外 key，也不依赖外部 embedding 服务。

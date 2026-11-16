@@ -1,12 +1,12 @@
-"""线上冒烟自检：验证 Netlify 前端 + Render 后端 + Agent 工具链路。
+"""线上冒烟自检：验证前端子路径 + API 代理 + Agent 工具链路。
 
 用法：
-    FRONTEND_URL=https://lol-rag.netlify.app \
-    API_URL=https://lol-rag-api.onrender.com \
+    FRONTEND_URL=https://example.com/apps/lol-rag \
+    API_URL=https://example.com/apps/lol-rag \
     uv run python scripts/smoke_test.py
 
-不传环境变量时使用上述默认值。退出码非 0 表示有检查失败。
-Render free plan 会冷启动，单次请求可能 40-90 秒，超时设置得比较宽。
+不传环境变量时仍使用旧 Netlify/Render 地址，仅供迁移期间兼容。退出码非 0 表示有检查失败。
+自托管冷启动或模型排队时单次请求可能较慢，超时设置得比较宽。
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def main() -> int:
         check("前端首页 200", False, repr(exc))
 
     # 2. 同源代理 + 后端健康检查
-    for label, base in (("Netlify 代理", FRONTEND_URL), ("Render 直连", API_URL)):
+    for label, base in (("前端同源代理", FRONTEND_URL), ("后端直连", API_URL)):
         try:
             health = httpx.get(f"{base}/api/health", timeout=TIMEOUT).json()
             required = {"status", "data_version", "champions", "items", "model"}
