@@ -36,6 +36,6 @@ jobs:
 
       - name: Smoke test live services
         env:
-          FRONTEND_URL: ${{ vars.FRONTEND_URL || 'https://lol-rag.netlify.app' }}
-          API_URL: ${{ vars.API_URL || 'https://lol-rag-api.onrender.com' }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL || 'https://wml.ailoong.net.cn/apps/lol-rag' }}
+          API_URL: ${{ vars.API_URL || 'https://wml.ailoong.net.cn/apps/lol-rag' }}
         run: python scripts/smoke_test.py
