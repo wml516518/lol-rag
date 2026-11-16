@@ -330,15 +330,15 @@ Nginx 把 `/apps/lol-rag/api/*` 同源转发到 FastAPI，前端代码只依赖 
   `.github/workflows/deploy-self-host.yml`。发布前会核对 main SHA、CI 来源和产物，再只更新
   `/srv/portfolio/lol-rag/`，不会触碰主页或历史星河。
 - **上线冒烟**：切换后检查 `/apps/lol-rag/`、`/apps/lol-rag/api/health` 和一条真实问答
-  （精确事实 → 结构化工具；攻略问题 → `search_knowledge`）。当前脚本示例仍使用旧平台地址，
-  切换到正式域名时应把 `FRONTEND_URL` 和 `API_URL` 替换成新入口：
+  （精确事实 → 结构化工具；攻略问题 → `search_knowledge`）。脚本默认指向正式域名，
+  需要时可用 `FRONTEND_URL` 和 `API_URL` 覆盖：
 
   ```bash
-  FRONTEND_URL=https://example.com/apps/lol-rag API_URL=https://example.com/apps/lol-rag \
+  FRONTEND_URL=https://wml.ailoong.net.cn/apps/lol-rag API_URL=https://wml.ailoong.net.cn/apps/lol-rag \
     uv run python scripts/smoke_test.py
   ```
 
-  正式切换完成后应停用仅针对旧 Netlify 地址的定时 Smoke workflow，避免继续消耗旧平台额度。
+  旧 Netlify/Render 已下线，`Netlify Recover` workflow 已删除，Smoke 只针对正式域名运行。
 
 ### 环境变量
 

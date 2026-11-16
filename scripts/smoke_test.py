@@ -5,7 +5,7 @@
     API_URL=https://example.com/apps/lol-rag \
     uv run python scripts/smoke_test.py
 
-不传环境变量时仍使用旧 Netlify/Render 地址，仅供迁移期间兼容。退出码非 0 表示有检查失败。
+不传环境变量时使用正式域名。退出码非 0 表示有检查失败。
 自托管冷启动或模型排队时单次请求可能较慢，超时设置得比较宽。
 """
 from __future__ import annotations
@@ -22,8 +22,8 @@ for key in ("NO_PROXY", "no_proxy"):
 
 import httpx  # noqa: E402
 
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://lol-rag.netlify.app").rstrip("/")
-API_URL = os.environ.get("API_URL", "https://lol-rag-api.onrender.com").rstrip("/")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://wml.ailoong.net.cn/apps/lol-rag").rstrip("/")
+API_URL = os.environ.get("API_URL", "https://wml.ailoong.net.cn/apps/lol-rag").rstrip("/")
 TIMEOUT = float(os.environ.get("SMOKE_TIMEOUT", "120"))
 
 results: list[tuple[str, bool, str]] = []
