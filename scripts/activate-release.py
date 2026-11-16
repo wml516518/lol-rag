@@ -31,8 +31,14 @@ def activate_release(root: Path, app: str, release: str, source: Path) -> Path:
     if current.exists() and not current.is_symlink():
         raise ValueError("Current must be a release symlink")
     if current.is_symlink() and (current / "assets").is_dir():
-        shutil.copytree(current / "assets", destination / "assets", dirs_exist_ok=True,
-                        copy_function=lambda original, target: target if Path(target).exists() else shutil.copy2(original, target))
+        previous_assets = current / "assets"
+        for original in previous_assets.rglob("*"):
+            target = destination / "assets" / original.relative_to(previous_assets)
+            if original.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            elif not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(original, target)
     for path in [destination, *destination.rglob("*")]:
         path.chmod(0o755 if path.is_dir() else 0o644)
     next_link = app_root / f".next-{release}"
