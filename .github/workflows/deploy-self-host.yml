@@ -1,0 +1,59 @@
+name: Deploy LOL RAG static site
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-lol-rag
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.SELF_HOST_DEPLOY_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: static-lol-rag
+          path: build/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Check successful main run is still current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$(gh api "repos/${{ github.repository }}/git/ref/heads/main" --jq .object.sha)" = "$HEAD_SHA"
+          test "$(gh run view "$RUN_ID" --repo "${{ github.repository }}" --json event,headBranch,headSha,status,conclusion \
+            --jq '.event == "push" and .headBranch == "main" and .status == "completed" and .conclusion == "success" and .headSha == env.HEAD_SHA')" = true
+      - name: Load deployment key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Publish LOL RAG only
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/srv/portfolio/static' }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bash scripts/deploy-static.sh lol-rag build
